@@ -1,6 +1,7 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { SimulationStatus, NodeStatus } from '@prisma/client';
+import { SimulationGateway } from './gateways/simulation.gateway';
 
 interface NodeData {
   id: string;
@@ -47,7 +48,10 @@ export class SimulationService {
     'object-storage': { latencyMs: 25.0, maxThroughputRps: 2500 },
   };
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly simulationGateway: SimulationGateway,
+  ) {}
 
   async runSimulation(projectId: string, userId: string, config: SimulationConfig) {
     // Validate project ownership and extract nodes and edges
@@ -110,8 +114,17 @@ export class SimulationService {
         data: { status: SimulationStatus.RUNNING },
       });
 
+      // Emit simulation:started
+      this.simulationGateway.emitSimulationStarted(projectId, {
+        simulationId: simulation.id,
+        projectId,
+        config,
+        status: SimulationStatus.RUNNING,
+        timestamp: new Date().toISOString(),
+      });
+
       // Step 2 & 3: Traverse graph to build the request paths and calculate metrics
-      const simulationResults = this.simulateTrafficFlow(nodes, edges, startNodes, config);
+      const simulationResults = this.simulateTrafficFlow(projectId, nodes, edges, startNodes, config);
 
       // Step 4: Save aggregated results
       await this.prisma.simulationResult.createMany({
@@ -129,7 +142,7 @@ export class SimulationService {
         })),
       });
 
-      return this.prisma.simulation.update({
+      const completedSim = await this.prisma.simulation.update({
         where: { id: simulation.id },
         data: {
           status: SimulationStatus.COMPLETED,
@@ -139,6 +152,17 @@ export class SimulationService {
           results: true,
         },
       });
+
+      // Emit simulation:completed
+      this.simulationGateway.emitSimulationCompleted(projectId, {
+        simulationId: simulation.id,
+        projectId,
+        status: SimulationStatus.COMPLETED,
+        completedAt: completedSim.completedAt,
+        results: completedSim.results,
+      });
+
+      return completedSim;
     } catch (err: any) {
       await this.prisma.simulation.update({
         where: { id: simulation.id },
@@ -227,8 +251,10 @@ export class SimulationService {
 
   /**
    * Main simulation walker. Tracks throughput degradation and latency accumulation.
+   * Emits simulation:node-update and simulation:metrics real-time events via Socket.IO gateway.
    */
   private simulateTrafficFlow(
+    projectId: string,
     nodes: NodeData[],
     edges: EdgeData[],
     startNodes: string[],
@@ -262,12 +288,9 @@ export class SimulationService {
       isBottleneck: boolean;
     }>();
 
-    // BFS-based traversal starting from entrypoints
-    // We keep track of incoming requests/traffic flow to calculate load.
     const incomingLoad = new Map<string, number>();
     const resolvedIncoming = new Map<string, number>();
 
-    // Initial load at startNodes is divided equally
     const initialLoad = config.rps;
     for (const startId of startNodes) {
       incomingLoad.set(startId, initialLoad / startNodes.length);
@@ -308,7 +331,6 @@ export class SimulationService {
       // Check for throughput bottlenecking
       const isBottleneck = status !== NodeStatus.FAILED && load > baseline.maxThroughputRps;
       if (isBottleneck) {
-        // Degrade performance under heavy load (queueing delay)
         const loadRatio = load / baseline.maxThroughputRps;
         latency += baseline.latencyMs * (loadRatio - 1) * 2;
         errorRate = Math.min(0.95, errorRate + (loadRatio - 1) * 0.1);
@@ -320,11 +342,9 @@ export class SimulationService {
       const cpuUsage = Math.min(100.0, loadRatio * 85.0 + Math.random() * 10);
       const memoryUsage = Math.min(100.0, 40.0 + loadRatio * 45.0 + Math.random() * 5);
 
-      // Node throughput is outputting requests minus errors
       const outputThroughput = status === NodeStatus.FAILED ? 0 : load * (1 - errorRate);
 
-      // Save results for this node
-      results.set(currId, {
+      const nodeResult = {
         nodeId: currId,
         nodeType: node.type,
         status,
@@ -334,7 +354,19 @@ export class SimulationService {
         cpuUsage: Math.round(cpuUsage * 100) / 100,
         memoryUsage: Math.round(memoryUsage * 100) / 100,
         isBottleneck,
+      };
+
+      // Save results for this node
+      results.set(currId, nodeResult);
+
+      // Emit real-time WebSocket events for node update & metrics
+      this.simulationGateway.emitNodeUpdate(projectId, {
+        nodeId: currId,
+        status,
+        isBottleneck,
       });
+
+      this.simulationGateway.emitMetrics(projectId, nodeResult);
 
       // Propagate traffic to outgoing nodes
       const outgoing = adjList.get(currId) || [];
@@ -356,7 +388,7 @@ export class SimulationService {
     // For any disconnected nodes, calculate zero stats
     for (const node of nodes) {
       if (!results.has(node.id)) {
-        results.set(node.id, {
+        const discResult = {
           nodeId: node.id,
           nodeType: node.type,
           status: NodeStatus.FAILED,
@@ -365,6 +397,12 @@ export class SimulationService {
           errorRate: 0,
           cpuUsage: 0,
           memoryUsage: 0,
+          isBottleneck: false,
+        };
+        results.set(node.id, discResult);
+        this.simulationGateway.emitNodeUpdate(projectId, {
+          nodeId: node.id,
+          status: NodeStatus.FAILED,
           isBottleneck: false,
         });
       }
