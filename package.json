@@ -29,15 +29,21 @@
     "@nestjs/platform-socket.io": "^11.0.1",
     "@nestjs/swagger": "^11.0.3",
     "@nestjs/websockets": "^11.0.1",
+    "@nestjs/bull": "^11.0.2",
     "@prisma/client": "^6.2.1",
     "bcrypt": "^6.0.0",
+    "bull": "^4.16.5",
+    "bullmq": "^5.40.1",
     "class-transformer": "^0.5.1",
     "class-validator": "^0.15.1",
+    "ioredis": "^5.5.0",
     "passport": "^0.7.0",
     "passport-jwt": "^4.0.1",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.1",
-    "swagger-ui-express": "^5.0.1"
+    "socket.io": "^4.8.1",
+    "swagger-ui-express": "^5.0.1",
+    "uuid": "^11.0.5"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3.2.0",
@@ -51,6 +57,7 @@
     "@types/supertest": "^7.0.0",
     "@types/bcrypt": "^5.0.2",
     "@types/passport-jwt": "^4.0.1",
+    "@types/uuid": "^10.0.0",
     "prisma": "^6.2.1",
     "eslint": "^9.18.0",
     "eslint-config-prettier": "^10.0.1",
@@ -83,5 +90,11 @@
     ],
     "coverageDirectory": "../coverage",
     "testEnvironment": "node"
+  },
+  "pnpm": {
+    "overrides": {
+      "prisma": "6.2.1",
+      "@prisma/client": "6.2.1"
+    }
   }
 }

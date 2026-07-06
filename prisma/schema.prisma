@@ -8,6 +8,97 @@ generator client {
 }
 
 model User {
-  id    String @id @default(uuid())
-  email String @unique
+  id           String    @id @default(uuid())
+  email        String    @unique
+  password     String
+  name         String
+  projects     Project[]
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+}
+
+model Project {
+  id          String        @id @default(uuid())
+  name        String
+  description String?
+  userId      String
+  user        User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  nodes       DiagramNode[]
+  edges       DiagramEdge[]
+  simulations Simulation[]
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+}
+
+model DiagramNode {
+  id        String  @id @default(uuid())
+  projectId String
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  type      String  // 'api-gateway' | 'load-balancer' | 'microservice' | etc.
+  label     String
+  positionX Float
+  positionY Float
+  data      Json    // component-specific config (replicas, timeout, etc.)
+}
+
+model DiagramEdge {
+  id        String  @id @default(uuid())
+  projectId String
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  source    String  // node id
+  target    String  // node id
+  label     String?
+}
+
+model Simulation {
+  id          String            @id @default(uuid())
+  projectId   String
+  project     Project           @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  config      Json              // rps, concurrentUsers, duration, failures
+  status      SimulationStatus  @default(PENDING)
+  results     SimulationResult[]
+  createdAt   DateTime          @default(now())
+  completedAt DateTime?
+}
+
+enum SimulationStatus {
+  PENDING
+  RUNNING
+  COMPLETED
+  FAILED
+}
+
+model SimulationResult {
+  id              String     @id @default(uuid())
+  simulationId    String
+  simulation      Simulation @relation(fields: [simulationId], references: [id], onDelete: Cascade)
+  nodeId          String
+  nodeType        String
+  status          NodeStatus
+  latencyMs       Float
+  throughputRps   Float
+  errorRate       Float
+  cpuUsage        Float
+  memoryUsage     Float
+  isBottleneck    Boolean    @default(false)
+  createdAt       DateTime   @default(now())
+}
+
+enum NodeStatus {
+  HEALTHY
+  WARNING
+  CRITICAL
+  FAILED
+}
+
+model Template {
+  id          String   @id @default(uuid())
+  name        String
+  description String
+  category    String   // 'streaming' | 'ecommerce' | 'microservices' | etc.
+  thumbnail   String?
+  nodes       Json     // pre-built node definitions
+  edges       Json     // pre-built edge definitions
+  isPublic    Boolean  @default(true)
+  createdAt   DateTime @default(now())
 }
