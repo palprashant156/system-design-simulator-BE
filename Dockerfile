@@ -47,4 +47,4 @@ COPY --from=builder /app/prisma ./prisma
 EXPOSE 3000
 
 # Start command
-CMD ["pnpm", "run", "start:prod"]
+CMD ["sh", "-c", "pnpm prisma db push && pnpm run start:prod"]
