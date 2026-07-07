@@ -26,6 +26,10 @@ export class HttpExceptionFilter implements ExceptionFilter {
       message: typeof message === 'object' ? (message as any).message || message : message,
     };
 
+    if (status === HttpStatus.INTERNAL_SERVER_ERROR) {
+      console.error('Unhandled Internal Server Error:', exception);
+    }
+
     response.status(status).json(errorResponse);
   }
 }
