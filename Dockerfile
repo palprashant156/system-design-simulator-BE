@@ -16,7 +16,7 @@ COPY src ./src/
 COPY tsconfig.build.json tsconfig.json nest-cli.json ./
 
 # Install dependencies (including devDependencies for building)
-RUN pnpm install --frozen-lockfile
+RUN pnpm install --no-frozen-lockfile
 
 # Generate Prisma Client
 RUN pnpm prisma generate
