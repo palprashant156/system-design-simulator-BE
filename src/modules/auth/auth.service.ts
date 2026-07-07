@@ -18,7 +18,7 @@ export class AuthService {
       throw new ConflictException('Email already in use');
     }
 
-    const salt = await bcrypt.genSalt();
+    const salt = await bcrypt.genSalt(12);
     const passwordHash = await bcrypt.hash(dto.password, salt);
 
     const user = await this.usersService.create({

@@ -8,3 +8,4 @@ allowBuilds:
   "@prisma/engines": true
   unrs-resolver: true
   msgpackr-extract: true
+  '@scarf/scarf': true

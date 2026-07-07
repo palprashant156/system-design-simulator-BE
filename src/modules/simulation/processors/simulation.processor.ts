@@ -1,9 +1,10 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
-import { InjectQueue } from '@nestjs/bull';
+import { Processor, Process } from '@nestjs/bull';
 import * as Bull from 'bull';
-import { PrismaService } from '../../prisma/prisma.service';
+import { Logger } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import { PrismaService } from '../../../prisma/prisma.service';
+import { SimulationGateway } from '../gateways/simulation.gateway';
 import { SimulationStatus, NodeStatus } from '@prisma/client';
-import { SimulationGateway } from './gateways/simulation.gateway';
 
 interface NodeData {
   id: string;
@@ -21,15 +22,24 @@ interface EdgeData {
   label?: string;
 }
 
-interface SimulationConfig {
-  rps: number;
-  concurrentUsers: number;
-  duration: number;
-  failures?: Record<string, 'DOWN' | 'DEGRADED' | 'HIGH_LATENCY'>;
+interface SimulationJobData {
+  simulationId: string;
+  projectId: string;
+  config: {
+    rps: number;
+    concurrentUsers: number;
+    duration: number;
+    failures?: Record<string, 'DOWN' | 'DEGRADED' | 'HIGH_LATENCY'>;
+  };
+  startNodes: string[];
+  nodes: NodeData[];
+  edges: EdgeData[];
 }
 
-@Injectable()
-export class SimulationService {
+@Processor('simulation')
+export class SimulationProcessor {
+  private readonly logger = new Logger(SimulationProcessor.name);
+
   // Baseline latency and throughput configurations for components
   private readonly baselineMetrics: Record<string, { latencyMs: number; maxThroughputRps: number }> = {
     'api-gateway': { latencyMs: 2.0, maxThroughputRps: 10000 },
@@ -53,172 +63,99 @@ export class SimulationService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly simulationGateway: SimulationGateway,
-    @InjectQueue('simulation') private readonly simulationQueue: Bull.Queue,
+    private readonly configService: ConfigService,
   ) {}
 
-  async runSimulation(projectId: string, userId: string, config: SimulationConfig) {
-    // Validate project ownership and extract nodes and edges
-    const project = await this.prisma.project.findFirst({
-      where: { id: projectId, userId },
-      include: {
-        nodes: true,
-        edges: true,
-      },
-    });
+  private sleep(ms: number) {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+  }
 
-    if (!project) {
-      throw new NotFoundException(`Project with ID ${projectId} not found`);
-    }
-
-    if (project.nodes.length === 0) {
-      throw new BadRequestException('Cannot run simulation on an empty architecture diagram');
-    }
-
-    // Map DB nodes and edges to interface structures
-    const nodes: NodeData[] = project.nodes.map((n) => ({
-      id: n.id,
-      type: n.type,
-      label: n.label,
-      positionX: n.positionX,
-      positionY: n.positionY,
-      data: n.data as any,
-    }));
-
-    const edges: EdgeData[] = project.edges.map((e) => ({
-      id: e.id,
-      source: e.source,
-      target: e.target,
-      label: e.label || undefined,
-    }));
-
-    // Step 1: Validate Architecture (find disconnected nodes, cycles, and start nodes)
-    const { startNodes, hasCycle, disconnectedNodes } = this.validateArchitecture(nodes, edges);
-
-    if (hasCycle) {
-      throw new BadRequestException('Architecture simulation failed: Cycles detected in the request path.');
-    }
-
-    if (startNodes.length === 0) {
-      throw new BadRequestException('Architecture simulation failed: No entrypoint node found (node with no incoming connections).');
-    }
-
-    // Create a new simulation record as PENDING
-    const simulation = await this.prisma.simulation.create({
-      data: {
-        projectId,
-        config: config as any,
-        status: SimulationStatus.PENDING,
-      },
-    });
+  @Process('execute')
+  async handleExecute(job: Bull.Job<SimulationJobData>) {
+    const { simulationId, projectId, config, startNodes, nodes, edges } = job.data;
+    this.logger.log(`Starting background simulation execution: ${simulationId}`);
 
     try {
-      // Add the execution task to the asynchronous background queue
-      await this.simulationQueue.add('execute', {
-        simulationId: simulation.id,
-        projectId,
-        config,
-        startNodes,
-        nodes,
-        edges,
+      // 1. Update status to RUNNING in Database
+      await this.prisma.simulation.update({
+        where: { id: simulationId },
+        data: { status: SimulationStatus.RUNNING },
       });
 
-      return simulation;
+      // 2. Emit simulation:started
+      this.simulationGateway.emitSimulationStarted(projectId, {
+        simulationId,
+        projectId,
+        config,
+        status: SimulationStatus.RUNNING,
+        timestamp: new Date().toISOString(),
+      });
+
+      // 3. Run traffic calculations with a delay to simulate visual streaming
+      const simulationResults = await this.simulateTrafficFlowWithStreaming(
+        projectId,
+        nodes,
+        edges,
+        startNodes,
+        config,
+      );
+
+      // 4. Save results to DB
+      await this.prisma.simulationResult.createMany({
+        data: simulationResults.map((res) => ({
+          simulationId,
+          nodeId: res.nodeId,
+          nodeType: res.nodeType,
+          status: res.status,
+          latencyMs: res.latencyMs,
+          throughputRps: res.throughputRps,
+          errorRate: res.errorRate,
+          cpuUsage: res.cpuUsage,
+          memoryUsage: res.memoryUsage,
+          isBottleneck: res.isBottleneck,
+        })),
+      });
+
+      // 5. Update status to COMPLETED
+      const completedSim = await this.prisma.simulation.update({
+        where: { id: simulationId },
+        data: {
+          status: SimulationStatus.COMPLETED,
+          completedAt: new Date(),
+        },
+        include: {
+          results: true,
+        },
+      });
+
+      // 6. Emit simulation:completed
+      this.simulationGateway.emitSimulationCompleted(projectId, {
+        simulationId,
+        projectId,
+        status: SimulationStatus.COMPLETED,
+        completedAt: completedSim.completedAt,
+        results: completedSim.results,
+      });
+
+      this.logger.log(`Background simulation execution completed: ${simulationId}`);
     } catch (err: any) {
+      this.logger.error(`Background simulation execution failed: ${err.message}`, err.stack);
       await this.prisma.simulation.update({
-        where: { id: simulation.id },
+        where: { id: simulationId },
         data: {
           status: SimulationStatus.FAILED,
           completedAt: new Date(),
         },
       });
-      throw new BadRequestException(`Failed to queue simulation: ${err.message}`);
     }
   }
 
-  /**
-   * Performs DFS to find cycles and identify entrypoints (nodes with indegree = 0)
-   */
-  private validateArchitecture(nodes: NodeData[], edges: EdgeData[]) {
-    const adjList = new Map<string, string[]>();
-    const inDegree = new Map<string, number>();
-
-    // Init
-    for (const node of nodes) {
-      adjList.set(node.id, []);
-      inDegree.set(node.id, 0);
-    }
-
-    // Populate adjacency list and indegrees
-    for (const edge of edges) {
-      const src = edge.source;
-      const dest = edge.target;
-      if (adjList.has(src) && adjList.has(dest)) {
-        adjList.get(src)!.push(dest);
-        inDegree.set(dest, (inDegree.get(dest) || 0) + 1);
-      }
-    }
-
-    // Start nodes are those with in-degree of 0
-    const startNodes = nodes.filter((node) => inDegree.get(node.id) === 0).map((n) => n.id);
-
-    // Cycle detection using DFS
-    const visited = new Set<string>();
-    const recStack = new Set<string>();
-    let hasCycle = false;
-
-    const dfs = (nodeId: string): boolean => {
-      visited.add(nodeId);
-      recStack.add(nodeId);
-
-      const neighbors = adjList.get(nodeId) || [];
-      for (const neighbor of neighbors) {
-        if (!visited.has(neighbor)) {
-          if (dfs(neighbor)) return true;
-        } else if (recStack.has(neighbor)) {
-          return true; // Cycle detected
-        }
-      }
-
-      recStack.delete(nodeId);
-      return false;
-    };
-
-    for (const node of nodes) {
-      if (!visited.has(node.id)) {
-        if (dfs(node.id)) {
-          hasCycle = true;
-          break;
-        }
-      }
-    }
-
-    // Disconnected nodes (not reachable from any startNode)
-    const reachable = new Set<string>();
-    const q: string[] = [...startNodes];
-    while (q.length > 0) {
-      const curr = q.shift()!;
-      if (!reachable.has(curr)) {
-        reachable.add(curr);
-        const neighbors = adjList.get(curr) || [];
-        q.push(...neighbors);
-      }
-    }
-
-    const disconnectedNodes = nodes.filter((n) => !reachable.has(n.id)).map((n) => n.id);
-
-    return { startNodes, hasCycle, disconnectedNodes };
-  }
-
-  /**
-   * Main simulation walker. Tracks throughput degradation and latency accumulation.
-   * Emits simulation:node-update and simulation:metrics real-time events via Socket.IO gateway.
-   */
-  private simulateTrafficFlow(
+  private async simulateTrafficFlowWithStreaming(
     projectId: string,
     nodes: NodeData[],
     edges: EdgeData[],
     startNodes: string[],
-    config: SimulationConfig,
+    config: SimulationJobData['config'],
   ) {
     const nodeMap = new Map<string, NodeData>(nodes.map((n) => [n.id, n]));
     const adjList = new Map<string, string[]>();
@@ -319,14 +256,19 @@ export class SimulationService {
       // Save results for this node
       results.set(currId, nodeResult);
 
-      // Emit real-time WebSocket events for node update & metrics
+      // Emit real-time WebSockets events for node update
       this.simulationGateway.emitNodeUpdate(projectId, {
         nodeId: currId,
         status,
         isBottleneck,
       });
 
+      // Emit metrics
       this.simulationGateway.emitMetrics(projectId, nodeResult);
+
+      // Sleep configurable ms per node to visualize live traversal on the frontend React Flow canvas
+      const stepDelay = this.configService.get<number>('simulation.stepDelayMs') || 500;
+      await this.sleep(stepDelay);
 
       // Propagate traffic to outgoing nodes
       const outgoing = adjList.get(currId) || [];
@@ -365,42 +307,10 @@ export class SimulationService {
           status: NodeStatus.FAILED,
           isBottleneck: false,
         });
+        this.simulationGateway.emitMetrics(projectId, discResult);
       }
     }
 
     return Array.from(results.values());
-  }
-
-  async getSimulationHistory(projectId: string, userId: string) {
-    const project = await this.prisma.project.findFirst({
-      where: { id: projectId, userId },
-    });
-    if (!project) {
-      throw new NotFoundException(`Project with ID ${projectId} not found`);
-    }
-
-    return this.prisma.simulation.findMany({
-      where: { projectId },
-      orderBy: { createdAt: 'desc' },
-      include: {
-        results: true,
-      },
-    });
-  }
-
-  async getSimulationResult(simulationId: string, userId: string) {
-    const simulation = await this.prisma.simulation.findUnique({
-      where: { id: simulationId },
-      include: {
-        project: true,
-        results: true,
-      },
-    });
-
-    if (!simulation || simulation.project.userId !== userId) {
-      throw new NotFoundException(`Simulation with ID ${simulationId} not found`);
-    }
-
-    return simulation;
   }
 }

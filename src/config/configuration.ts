@@ -13,4 +13,13 @@ export default () => ({
     refreshSecret: process.env.JWT_REFRESH_SECRET || 'fallback_refresh_secret_key',
     refreshExpiresIn: process.env.JWT_REFRESH_EXPIRES_IN || '7d',
   },
+  cors: {
+    origin: process.env.CORS_ORIGIN || '*',
+  },
+  swagger: {
+    path: process.env.SWAGGER_PATH || 'api',
+  },
+  simulation: {
+    stepDelayMs: parseInt(process.env.SIMULATION_STEP_DELAY_MS || '500', 10),
+  },
 });
