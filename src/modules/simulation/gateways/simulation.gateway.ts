@@ -16,7 +16,9 @@ import { Logger } from '@nestjs/common';
   },
   namespace: '/simulations',
 })
-export class SimulationGateway implements OnGatewayConnection, OnGatewayDisconnect {
+export class SimulationGateway
+  implements OnGatewayConnection, OnGatewayDisconnect
+{
   @WebSocketServer()
   server!: Server;
 
@@ -31,14 +33,20 @@ export class SimulationGateway implements OnGatewayConnection, OnGatewayDisconne
   }
 
   @SubscribeMessage('join:project')
-  handleJoinProject(@MessageBody() projectId: string, @ConnectedSocket() client: Socket) {
+  handleJoinProject(
+    @MessageBody() projectId: string,
+    @ConnectedSocket() client: Socket,
+  ) {
     client.join(`project:${projectId}`);
     this.logger.log(`Client ${client.id} joined room project:${projectId}`);
     return { status: 'joined', projectId };
   }
 
   @SubscribeMessage('leave:project')
-  handleLeaveProject(@MessageBody() projectId: string, @ConnectedSocket() client: Socket) {
+  handleLeaveProject(
+    @MessageBody() projectId: string,
+    @ConnectedSocket() client: Socket,
+  ) {
     client.leave(`project:${projectId}`);
     this.logger.log(`Client ${client.id} left room project:${projectId}`);
     return { status: 'left', projectId };

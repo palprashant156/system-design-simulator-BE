@@ -1,4 +1,8 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  BadRequestException,
+} from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bull';
 import * as Bull from 'bull';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -31,19 +35,22 @@ interface SimulationConfig {
 @Injectable()
 export class SimulationService {
   // Baseline latency and throughput configurations for components
-  private readonly baselineMetrics: Record<string, { latencyMs: number; maxThroughputRps: number }> = {
+  private readonly baselineMetrics: Record<
+    string,
+    { latencyMs: number; maxThroughputRps: number }
+  > = {
     'api-gateway': { latencyMs: 2.0, maxThroughputRps: 10000 },
     'load-balancer': { latencyMs: 1.0, maxThroughputRps: 20000 },
-    'microservice': { latencyMs: 8.0, maxThroughputRps: 2000 },
-    'database': { latencyMs: 15.0, maxThroughputRps: 500 },
-    'postgresql': { latencyMs: 12.0, maxThroughputRps: 600 },
-    'mysql': { latencyMs: 14.0, maxThroughputRps: 500 },
-    'redis': { latencyMs: 0.5, maxThroughputRps: 50000 },
-    'cache': { latencyMs: 0.8, maxThroughputRps: 30000 },
-    'kafka': { latencyMs: 4.0, maxThroughputRps: 15000 },
-    'rabbitmq': { latencyMs: 5.0, maxThroughputRps: 10000 },
+    microservice: { latencyMs: 8.0, maxThroughputRps: 2000 },
+    database: { latencyMs: 15.0, maxThroughputRps: 500 },
+    postgresql: { latencyMs: 12.0, maxThroughputRps: 600 },
+    mysql: { latencyMs: 14.0, maxThroughputRps: 500 },
+    redis: { latencyMs: 0.5, maxThroughputRps: 50000 },
+    cache: { latencyMs: 0.8, maxThroughputRps: 30000 },
+    kafka: { latencyMs: 4.0, maxThroughputRps: 15000 },
+    rabbitmq: { latencyMs: 5.0, maxThroughputRps: 10000 },
     'message-queue': { latencyMs: 4.5, maxThroughputRps: 12000 },
-    'cdn': { latencyMs: 1.5, maxThroughputRps: 100000 },
+    cdn: { latencyMs: 1.5, maxThroughputRps: 100000 },
     'authentication-service': { latencyMs: 6.0, maxThroughputRps: 3000 },
     'notification-service': { latencyMs: 10.0, maxThroughputRps: 1000 },
     'search-service': { latencyMs: 18.0, maxThroughputRps: 800 },
@@ -56,7 +63,11 @@ export class SimulationService {
     @InjectQueue('simulation') private readonly simulationQueue: Bull.Queue,
   ) {}
 
-  async runSimulation(projectId: string, userId: string, config: SimulationConfig) {
+  async runSimulation(
+    projectId: string,
+    userId: string,
+    config: SimulationConfig,
+  ) {
     // Validate project ownership and extract nodes and edges
     const project = await this.prisma.project.findFirst({
       where: { id: projectId, userId },
@@ -71,7 +82,9 @@ export class SimulationService {
     }
 
     if (project.nodes.length === 0) {
-      throw new BadRequestException('Cannot run simulation on an empty architecture diagram');
+      throw new BadRequestException(
+        'Cannot run simulation on an empty architecture diagram',
+      );
     }
 
     // Map DB nodes and edges to interface structures
@@ -92,14 +105,19 @@ export class SimulationService {
     }));
 
     // Step 1: Validate Architecture (find disconnected nodes, cycles, and start nodes)
-    const { startNodes, hasCycle, disconnectedNodes } = this.validateArchitecture(nodes, edges);
+    const { startNodes, hasCycle, disconnectedNodes } =
+      this.validateArchitecture(nodes, edges);
 
     if (hasCycle) {
-      throw new BadRequestException('Architecture simulation failed: Cycles detected in the request path.');
+      throw new BadRequestException(
+        'Architecture simulation failed: Cycles detected in the request path.',
+      );
     }
 
     if (startNodes.length === 0) {
-      throw new BadRequestException('Architecture simulation failed: No entrypoint node found (node with no incoming connections).');
+      throw new BadRequestException(
+        'Architecture simulation failed: No entrypoint node found (node with no incoming connections).',
+      );
     }
 
     // Create a new simulation record as PENDING
@@ -131,7 +149,9 @@ export class SimulationService {
           completedAt: new Date(),
         },
       });
-      throw new BadRequestException(`Failed to queue simulation: ${err.message}`);
+      throw new BadRequestException(
+        `Failed to queue simulation: ${err.message}`,
+      );
     }
   }
 
@@ -159,7 +179,9 @@ export class SimulationService {
     }
 
     // Start nodes are those with in-degree of 0
-    const startNodes = nodes.filter((node) => inDegree.get(node.id) === 0).map((n) => n.id);
+    const startNodes = nodes
+      .filter((node) => inDegree.get(node.id) === 0)
+      .map((n) => n.id);
 
     // Cycle detection using DFS
     const visited = new Set<string>();
@@ -204,7 +226,9 @@ export class SimulationService {
       }
     }
 
-    const disconnectedNodes = nodes.filter((n) => !reachable.has(n.id)).map((n) => n.id);
+    const disconnectedNodes = nodes
+      .filter((n) => !reachable.has(n.id))
+      .map((n) => n.id);
 
     return { startNodes, hasCycle, disconnectedNodes };
   }
@@ -236,17 +260,20 @@ export class SimulationService {
       }
     }
 
-    const results = new Map<string, {
-      nodeId: string;
-      nodeType: string;
-      status: NodeStatus;
-      latencyMs: number;
-      throughputRps: number;
-      errorRate: number;
-      cpuUsage: number;
-      memoryUsage: number;
-      isBottleneck: boolean;
-    }>();
+    const results = new Map<
+      string,
+      {
+        nodeId: string;
+        nodeType: string;
+        status: NodeStatus;
+        latencyMs: number;
+        throughputRps: number;
+        errorRate: number;
+        cpuUsage: number;
+        memoryUsage: number;
+        isBottleneck: boolean;
+      }
+    >();
 
     const incomingLoad = new Map<string, number>();
     const resolvedIncoming = new Map<string, number>();
@@ -265,8 +292,11 @@ export class SimulationService {
       const load = incomingLoad.get(currId) || 0;
 
       // Calculate single-node performance
-      const baseline = this.baselineMetrics[node.type] || { latencyMs: 5.0, maxThroughputRps: 1000 };
-      
+      const baseline = this.baselineMetrics[node.type] || {
+        latencyMs: 5.0,
+        maxThroughputRps: 1000,
+      };
+
       let latency = baseline.latencyMs;
       let errorRate = 0.0;
       let status: NodeStatus = NodeStatus.HEALTHY;
@@ -289,7 +319,8 @@ export class SimulationService {
       }
 
       // Check for throughput bottlenecking
-      const isBottleneck = status !== NodeStatus.FAILED && load > baseline.maxThroughputRps;
+      const isBottleneck =
+        status !== NodeStatus.FAILED && load > baseline.maxThroughputRps;
       if (isBottleneck) {
         const loadRatio = load / baseline.maxThroughputRps;
         latency += baseline.latencyMs * (loadRatio - 1) * 2;
@@ -300,9 +331,13 @@ export class SimulationService {
       // Calculate resources usage based on load ratio
       const loadRatio = Math.min(2.0, load / baseline.maxThroughputRps);
       const cpuUsage = Math.min(100.0, loadRatio * 85.0 + Math.random() * 10);
-      const memoryUsage = Math.min(100.0, 40.0 + loadRatio * 45.0 + Math.random() * 5);
+      const memoryUsage = Math.min(
+        100.0,
+        40.0 + loadRatio * 45.0 + Math.random() * 5,
+      );
 
-      const outputThroughput = status === NodeStatus.FAILED ? 0 : load * (1 - errorRate);
+      const outputThroughput =
+        status === NodeStatus.FAILED ? 0 : load * (1 - errorRate);
 
       const nodeResult = {
         nodeId: currId,
@@ -398,7 +433,9 @@ export class SimulationService {
     });
 
     if (!simulation || simulation.project.userId !== userId) {
-      throw new NotFoundException(`Simulation with ID ${simulationId} not found`);
+      throw new NotFoundException(
+        `Simulation with ID ${simulationId} not found`,
+      );
     }
 
     return simulation;

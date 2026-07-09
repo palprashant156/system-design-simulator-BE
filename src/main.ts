@@ -21,7 +21,7 @@ async function bootstrap() {
     credentials: true,
   });
 
-  // Global filters, interceptors and validation pipes 
+  // Global filters, interceptors and validation pipes
   app.useGlobalPipes(
     new ValidationPipe({
       whitelist: true,
@@ -35,18 +35,22 @@ async function bootstrap() {
   // Setup Swagger API documentation
   const config = new DocumentBuilder()
     .setTitle('System Design Simulator API')
-    .setDescription('The API documentation for the System Design Simulator backend application.')
+    .setDescription(
+      'The API documentation for the System Design Simulator backend application.',
+    )
     .setVersion('1.0')
     .addBearerAuth()
     .build();
   const document = SwaggerModule.createDocument(app, config);
-  
+
   const swaggerPath = configService.get<string>('swagger.path') || 'api';
   SwaggerModule.setup(swaggerPath, app, document);
 
   const port = configService.get<number>('port') || 3000;
   await app.listen(port);
   console.log(`Application is running on: http://localhost:${port}`);
-  console.log(`Swagger documentation is available at: http://localhost:${port}/${swaggerPath}`);
+  console.log(
+    `Swagger documentation is available at: http://localhost:${port}/${swaggerPath}`,
+  );
 }
 bootstrap();

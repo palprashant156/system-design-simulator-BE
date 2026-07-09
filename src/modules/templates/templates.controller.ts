@@ -1,5 +1,10 @@
 import { Controller, Get, Post, Param, UseGuards } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiBearerAuth, ApiResponse } from '@nestjs/swagger';
+import {
+  ApiTags,
+  ApiOperation,
+  ApiBearerAuth,
+  ApiResponse,
+} from '@nestjs/swagger';
 import { TemplatesService } from './templates.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { User } from '../../common/decorators/user.decorator';
@@ -27,8 +32,13 @@ export class TemplatesController {
   @Post(':id/fork')
   @ApiBearerAuth()
   @UseGuards(JwtAuthGuard)
-  @ApiOperation({ summary: 'Fork a public architecture template into a user project' })
-  @ApiResponse({ status: 201, description: 'Template successfully forked into project' })
+  @ApiOperation({
+    summary: 'Fork a public architecture template into a user project',
+  })
+  @ApiResponse({
+    status: 201,
+    description: 'Template successfully forked into project',
+  })
   @ApiResponse({ status: 404, description: 'Template not found' })
   forkTemplate(@Param('id') id: string, @User('userId') userId: string) {
     return this.templatesService.forkTemplate(id, userId);

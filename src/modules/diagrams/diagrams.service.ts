@@ -9,8 +9,20 @@ export class DiagramsService {
     projectId: string,
     userId: string,
     data: {
-      nodes: Array<{ id: string; type: string; label: string; positionX: number; positionY: number; data?: any }>;
-      edges: Array<{ id: string; source: string; target: string; label?: string }>;
+      nodes: Array<{
+        id: string;
+        type: string;
+        label: string;
+        positionX: number;
+        positionY: number;
+        data?: any;
+      }>;
+      edges: Array<{
+        id: string;
+        source: string;
+        target: string;
+        label?: string;
+      }>;
     },
   ) {
     // Validate project ownership
@@ -55,7 +67,11 @@ export class DiagramsService {
         });
       }
 
-      return { success: true, nodeCount: data.nodes.length, edgeCount: data.edges.length };
+      return {
+        success: true,
+        nodeCount: data.nodes.length,
+        edgeCount: data.edges.length,
+      };
     });
   }
 

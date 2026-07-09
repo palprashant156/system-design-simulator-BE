@@ -1,5 +1,19 @@
-import { Controller, Get, Post, Put, Delete, Param, Body, UseGuards } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiBearerAuth, ApiResponse } from '@nestjs/swagger';
+import {
+  Controller,
+  Get,
+  Post,
+  Put,
+  Delete,
+  Param,
+  Body,
+  UseGuards,
+} from '@nestjs/common';
+import {
+  ApiTags,
+  ApiOperation,
+  ApiBearerAuth,
+  ApiResponse,
+} from '@nestjs/swagger';
 import { ProjectsService } from './projects.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { User } from '../../common/decorators/user.decorator';
@@ -14,7 +28,10 @@ export class ProjectsController {
   @Post()
   @ApiOperation({ summary: 'Create a new project' })
   @ApiResponse({ status: 201, description: 'Project successfully created' })
-  create(@User('userId') userId: string, @Body() body: { name: string; description?: string }) {
+  create(
+    @User('userId') userId: string,
+    @Body() body: { name: string; description?: string },
+  ) {
     return this.projectsService.create(userId, body);
   }
 

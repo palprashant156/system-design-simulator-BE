@@ -34,7 +34,11 @@ export class ProjectsService {
     return project;
   }
 
-  async update(id: string, userId: string, data: { name?: string; description?: string }) {
+  async update(
+    id: string,
+    userId: string,
+    data: { name?: string; description?: string },
+  ) {
     await this.findOne(id, userId);
 
     return this.prisma.project.update({

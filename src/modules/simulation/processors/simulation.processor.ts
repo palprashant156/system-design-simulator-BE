@@ -41,19 +41,22 @@ export class SimulationProcessor {
   private readonly logger = new Logger(SimulationProcessor.name);
 
   // Baseline latency and throughput configurations for components
-  private readonly baselineMetrics: Record<string, { latencyMs: number; maxThroughputRps: number }> = {
+  private readonly baselineMetrics: Record<
+    string,
+    { latencyMs: number; maxThroughputRps: number }
+  > = {
     'api-gateway': { latencyMs: 2.0, maxThroughputRps: 10000 },
     'load-balancer': { latencyMs: 1.0, maxThroughputRps: 20000 },
-    'microservice': { latencyMs: 8.0, maxThroughputRps: 2000 },
-    'database': { latencyMs: 15.0, maxThroughputRps: 500 },
-    'postgresql': { latencyMs: 12.0, maxThroughputRps: 600 },
-    'mysql': { latencyMs: 14.0, maxThroughputRps: 500 },
-    'redis': { latencyMs: 0.5, maxThroughputRps: 50000 },
-    'cache': { latencyMs: 0.8, maxThroughputRps: 30000 },
-    'kafka': { latencyMs: 4.0, maxThroughputRps: 15000 },
-    'rabbitmq': { latencyMs: 5.0, maxThroughputRps: 10000 },
+    microservice: { latencyMs: 8.0, maxThroughputRps: 2000 },
+    database: { latencyMs: 15.0, maxThroughputRps: 500 },
+    postgresql: { latencyMs: 12.0, maxThroughputRps: 600 },
+    mysql: { latencyMs: 14.0, maxThroughputRps: 500 },
+    redis: { latencyMs: 0.5, maxThroughputRps: 50000 },
+    cache: { latencyMs: 0.8, maxThroughputRps: 30000 },
+    kafka: { latencyMs: 4.0, maxThroughputRps: 15000 },
+    rabbitmq: { latencyMs: 5.0, maxThroughputRps: 10000 },
     'message-queue': { latencyMs: 4.5, maxThroughputRps: 12000 },
-    'cdn': { latencyMs: 1.5, maxThroughputRps: 100000 },
+    cdn: { latencyMs: 1.5, maxThroughputRps: 100000 },
     'authentication-service': { latencyMs: 6.0, maxThroughputRps: 3000 },
     'notification-service': { latencyMs: 10.0, maxThroughputRps: 1000 },
     'search-service': { latencyMs: 18.0, maxThroughputRps: 800 },
@@ -72,8 +75,11 @@ export class SimulationProcessor {
 
   @Process('execute')
   async handleExecute(job: Bull.Job<SimulationJobData>) {
-    const { simulationId, projectId, config, startNodes, nodes, edges } = job.data;
-    this.logger.log(`Starting background simulation execution: ${simulationId}`);
+    const { simulationId, projectId, config, startNodes, nodes, edges } =
+      job.data;
+    this.logger.log(
+      `Starting background simulation execution: ${simulationId}`,
+    );
 
     try {
       // 1. Update status to RUNNING in Database
@@ -137,9 +143,14 @@ export class SimulationProcessor {
         results: completedSim.results,
       });
 
-      this.logger.log(`Background simulation execution completed: ${simulationId}`);
+      this.logger.log(
+        `Background simulation execution completed: ${simulationId}`,
+      );
     } catch (err: any) {
-      this.logger.error(`Background simulation execution failed: ${err.message}`, err.stack);
+      this.logger.error(
+        `Background simulation execution failed: ${err.message}`,
+        err.stack,
+      );
       await this.prisma.simulation.update({
         where: { id: simulationId },
         data: {
@@ -173,17 +184,20 @@ export class SimulationProcessor {
       }
     }
 
-    const results = new Map<string, {
-      nodeId: string;
-      nodeType: string;
-      status: NodeStatus;
-      latencyMs: number;
-      throughputRps: number;
-      errorRate: number;
-      cpuUsage: number;
-      memoryUsage: number;
-      isBottleneck: boolean;
-    }>();
+    const results = new Map<
+      string,
+      {
+        nodeId: string;
+        nodeType: string;
+        status: NodeStatus;
+        latencyMs: number;
+        throughputRps: number;
+        errorRate: number;
+        cpuUsage: number;
+        memoryUsage: number;
+        isBottleneck: boolean;
+      }
+    >();
 
     const incomingLoad = new Map<string, number>();
     const resolvedIncoming = new Map<string, number>();
@@ -202,8 +216,11 @@ export class SimulationProcessor {
       const load = incomingLoad.get(currId) || 0;
 
       // Calculate single-node performance
-      const baseline = this.baselineMetrics[node.type] || { latencyMs: 5.0, maxThroughputRps: 1000 };
-      
+      const baseline = this.baselineMetrics[node.type] || {
+        latencyMs: 5.0,
+        maxThroughputRps: 1000,
+      };
+
       let latency = baseline.latencyMs;
       let errorRate = 0.0;
       let status: NodeStatus = NodeStatus.HEALTHY;
@@ -226,7 +243,8 @@ export class SimulationProcessor {
       }
 
       // Check for throughput bottlenecking
-      const isBottleneck = status !== NodeStatus.FAILED && load > baseline.maxThroughputRps;
+      const isBottleneck =
+        status !== NodeStatus.FAILED && load > baseline.maxThroughputRps;
       if (isBottleneck) {
         const loadRatio = load / baseline.maxThroughputRps;
         latency += baseline.latencyMs * (loadRatio - 1) * 2;
@@ -237,9 +255,13 @@ export class SimulationProcessor {
       // Calculate resources usage based on load ratio
       const loadRatio = Math.min(2.0, load / baseline.maxThroughputRps);
       const cpuUsage = Math.min(100.0, loadRatio * 85.0 + Math.random() * 10);
-      const memoryUsage = Math.min(100.0, 40.0 + loadRatio * 45.0 + Math.random() * 5);
+      const memoryUsage = Math.min(
+        100.0,
+        40.0 + loadRatio * 45.0 + Math.random() * 5,
+      );
 
-      const outputThroughput = status === NodeStatus.FAILED ? 0 : load * (1 - errorRate);
+      const outputThroughput =
+        status === NodeStatus.FAILED ? 0 : load * (1 - errorRate);
 
       const nodeResult = {
         nodeId: currId,
@@ -267,7 +289,8 @@ export class SimulationProcessor {
       this.simulationGateway.emitMetrics(projectId, nodeResult);
 
       // Sleep configurable ms per node to visualize live traversal on the frontend React Flow canvas
-      const stepDelay = this.configService.get<number>('simulation.stepDelayMs') || 500;
+      const stepDelay =
+        this.configService.get<number>('simulation.stepDelayMs') || 500;
       await this.sleep(stepDelay);
 
       // Propagate traffic to outgoing nodes

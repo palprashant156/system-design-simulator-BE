@@ -30,10 +30,16 @@ export class AnalyticsService {
       const count = results.length || 1;
 
       const totalLatency = results.reduce((acc, r) => acc + r.latencyMs, 0);
-      const maxLatency = results.reduce((max, r) => Math.max(max, r.latencyMs), 0);
+      const maxLatency = results.reduce(
+        (max, r) => Math.max(max, r.latencyMs),
+        0,
+      );
       const avgLatency = totalLatency / count;
 
-      const totalThroughput = results.reduce((acc, r) => acc + r.throughputRps, 0);
+      const totalThroughput = results.reduce(
+        (acc, r) => acc + r.throughputRps,
+        0,
+      );
       const avgThroughput = totalThroughput / count;
 
       const totalErrorRate = results.reduce((acc, r) => acc + r.errorRate, 0);
@@ -54,12 +60,18 @@ export class AnalyticsService {
     });
 
     // Calculate component bottleneck frequency
-    const bottleneckFrequency: Record<string, { nodeType: string; count: number }> = {};
+    const bottleneckFrequency: Record<
+      string,
+      { nodeType: string; count: number }
+    > = {};
     for (const sim of simulations) {
       for (const res of sim.results) {
         if (res.isBottleneck) {
           if (!bottleneckFrequency[res.nodeId]) {
-            bottleneckFrequency[res.nodeId] = { nodeType: res.nodeType, count: 0 };
+            bottleneckFrequency[res.nodeId] = {
+              nodeType: res.nodeType,
+              count: 0,
+            };
           }
           bottleneckFrequency[res.nodeId].count += 1;
         }
